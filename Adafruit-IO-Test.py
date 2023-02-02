@@ -17,6 +17,7 @@ MQTT_PUBLISH_TOPIC = ""
 ADAFRUIT_FEED_COOLING = ""
 ADAFRUIT_FEED_FAN = ""
 ADAFRUIT_FEED_SET_TEMPERATURE = ""
+ADAFRUIT_FEED_LIGHTS = ""
 
 
 def read_config_file():
@@ -79,11 +80,19 @@ def adafruit_feed_connection(aio):
         feed = Feed(name="hvac-controller.set-temperature")
         ADAFRUIT_FEED_SET_TEMPERATURE = aio.create_feed(feed)
 
+    try:  # if we have a 'digital' feed
+        global ADAFRUIT_FEED_LIGHTS
+        ADAFRUIT_FEED_LIGHTS = aio.feeds('hvac-controller.lights')
+    except RequestError:  # create a digital feed
+        feed = Feed(name="hvac-controller.lights")
+        ADAFRUIT_FEED_LIGHTS = aio.create_feed(feed)
+
 
 def main():
     previous_cooling_data_value = ""
     previous_fan_data_value = ""
     previous_set_temperature_data_value = ""
+    previous_light_data_value = ""
 
     read_config_file()
 
@@ -186,6 +195,41 @@ def main():
                 print("temperature does not changed", "\n")
         except Exception as e:
             print(f"Error getting SET TEMPERATURE SLIDER data {e}")
+
+        try:
+            light_data = aio.receive(ADAFRUIT_FEED_LIGHTS.key)
+            light_data_value = int(light_data.value)
+            if light_data_value != previous_light_data_value:
+                if int(light_data.value) == 1:
+                    command = "switch-on"
+                    seq = 4005
+                    json_data["Command"] = command
+                    json_data["Seq"] = seq
+                    json_load = json.dumps(json_data, indent=4)
+                    print('Lights <- ON')
+                    print(json_load)
+                    print(type(json_load))
+                    print(MQTT_PUBLISH_TOPIC, "\n")
+                    out = client.publish(MQTT_PUBLISH_TOPIC, json_load)
+                    if out.is_published():
+                        print("Lighting ON Success", "\n")
+                elif int(light_data.value) == 0:
+                    command = "switch-off"
+                    seq = 4006
+                    json_data["Command"] = command
+                    json_data["Seq"] = seq
+                    json_load = json.dumps(json_data, indent=4)
+                    print('Lights <- OFF')
+                    print(json_load)
+                    print(type(json_load), "\n")
+                    out = client.publish(MQTT_PUBLISH_TOPIC, json_load)
+                    if out.is_published():
+                        print("Lighting OFF Success", "\n")
+                previous_cooling_data_value = int(light_data_value)
+            else:
+                print("lighting state not changed")
+        except Exception as e:
+            print(f"Error getting LIGHTING BUTTON data {e}")
 
         time.sleep(10)
 
